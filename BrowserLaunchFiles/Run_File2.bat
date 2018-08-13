@@ -1,0 +1,1 @@
+start chrome.exe --user-data-dir=C:\Users\walluser\Monitors_profile\Monitor2 /force-device-scale-factor=1 --window-position=3840,0 --new-window --start-fullscreen --disable-web-security --incognito --no-sandbox  --test-type --allow-file-access-from-files file:\\WALL3\WebContent\wall_JSON_and_raw_PNG_bitmap_view.html
