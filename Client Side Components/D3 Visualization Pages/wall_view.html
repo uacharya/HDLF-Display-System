@@ -1,0 +1,1383 @@
+  <!DOCTYPE html>
+  <head>
+  <meta charset="utf-8">
+  <title>Streamline animation</title>
+  <meta name="Author" content="Ujjwal Acharya">
+  <meta name="Description" content="Animating Wind Flow">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script type="text/javascript">
+    var recieveEventData,panner;
+
+    var webSocket = new WebSocket("ws://10.29.3.2:8080/D3/bilevelserver");
+
+    webSocket.onopen = function(){
+        webSocket.send("X="+window.screenX);
+    }
+
+    webSocket.onmessage = function(dimension){
+ 
+        if(dimension.data.indexOf("?")>=0){
+            window.history.replaceState({},document.Title,dimension.data);
+        }else if(dimension.data=='reset'){
+          if(reset==false){
+              reset=true;
+          }
+        }
+        // else if(dimension.data=='clearInputField'){
+        //     selectFlow(null,true);
+        // }
+        else if(dimension.data.includes('fetch')){
+          let temp = JSON.parse(dimension.data)
+          selectFlow(temp['fetch']);
+        }else if(dimension.data=='pause'){
+            pause=true;
+            selectFlow(null,false,true);
+        }else if(dimension.data=='resume'){
+            pause=false;
+            selectFlow(null,false,false,true);
+        }else if(dimension.data.includes('yaw')||dimension.data.includes('drag')){
+          panner(JSON.parse(dimension.data));
+        }else {
+            recieveEventData(JSON.parse(dimension.data));
+        }
+    }
+
+    var sendEvent = function(value){
+        webSocket.send(value);
+    }    
+    webSocket.onerror = function(value){
+        alert("error happend for value "+ value);
+    }
+
+</script>
+  <style>
+  text.stationName ,text.velocity{
+  text-anchor: start;
+  font: 30px Verdana;
+/*  text-shadow: 0 1px 0 #fff, 0 -1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff;*/
+}
+
+text.paOrRe{
+  font: 25px Verdana;
+}
+
+
+
+.tempButtons, image ,line{
+  cursor: pointer;
+}
+
+body { margin: 0px; 
+    padding: 0px;
+  overflow: hidden;
+}
+
+/* setting css transformation to produce stations blinking effect */
+
+/*@keyframes inout{
+ from {opacity: 1;}
+ to   {opacity: 0.1;}
+
+}
+
+image.blinkers{
+  animation:inout 1.5s ease-in-out 0s infinite alternate;
+}*/
+
+
+@keyframes blink{
+  0%{z-index: 2;}
+  50%{z-index: 1.5;}
+  100%{z-index: 1;}
+}
+
+/*.blinkers{
+   animation:blink 1s ease-in-out 0s infinite alternate;
+}*/
+
+/**************************************************************/
+
+svg#mapSVG{
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  z-index: 0;
+  background-color: #1ca2ba;
+
+}
+
+canvas#canvasDemo {
+  position: absolute;
+  pointer-events:none;
+  z-index: 1;
+}
+
+
+svg#topSvg{
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  z-index: 2;
+}
+
+/* get user asked data and fetch it from server elements */
+
+section#inputSection{
+  position: absolute;
+  top:300px;
+  left:220px;
+  margin: 0px;
+  padding: 20px 220px 20px 20px;
+  z-index: 3;
+  border:5px dotted black;
+}
+
+#dateSelector{
+  color: #555;
+  background-image: url(./musica-searcher.svg);
+  background-repeat: no-repeat;
+  background-size: 50px;
+  background-color: transparent;
+  box-shadow: 1px 1px 1px rgba(0,0,0,0.63);
+  border:5px solid black;
+  border-radius: 10px;
+  font-size: 50px;
+  background-position: 30px 45px;
+  padding-left: 100px;
+}
+
+.glyphicon-remove:hover,.glyphicon-play-circle:hover{
+  cursor: pointer;
+}
+
+.glyphicon-play-circle{
+  position:absolute;
+  top:50px;
+  left:770px;
+  font-size:80px;
+}
+
+.glyphicon-remove{
+  position:absolute;
+  top:50px;
+  left:870px;
+  font-size:80px;
+}
+
+.hintText{
+  visibility: hidden;
+  background-color: #555;
+  width: 400px;
+  color: #fff;
+  text-align: center;
+  border-radius: 10px;
+  position: absolute;
+  top:120%;
+  opacity: 1;
+  font-family: verdana;
+  font-size: 40px;
+  padding: 5px 5px;
+  transition: opacity 1s;
+}
+
+.glyphicon-remove:hover > .hintText,.glyphicon-play-circle:hover > .hintText{
+  opacity: 1;
+  visibility: visible;
+
+}
+
+
+.userInput{
+  display: none;
+}
+
+/************************************/
+
+/*elements for giving context of the view and more info*/
+#context{
+  text-shadow: 0 1px 0 #fff, 0 -1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff;
+  font-family: mplus-2p-light-sub,Helvetica,arial,freesans,clean,sans-serif;
+  font-size: 140px;
+  color: #555;
+  border-bottom: 1px solid black;
+  padding:0px 0px 5px 0px;
+  margin:0px;
+  display: inline-block;
+}
+
+#context:hover,#menuIcon:hover{
+  cursor: pointer;
+}
+
+#menuIcon{
+  display: inline-block;
+  margin: 0px 0px 0px 40px;
+  position:absolute;
+  top:45px;
+}
+
+.menuBar{
+  width: 100px;
+  height: 18px;
+  margin: 10px 0px 0px 0px;
+  background-color: rgba(5, 10, 30, 0.6);
+  display: block;
+}
+
+#currentDate{
+  font-family: Verdana;
+  color: #555;
+  padding:0px;
+  margin:10px 0px 0px;
+  text-shadow: none;
+  font-size: 90px;
+}
+
+#viewDetail{
+  background-color: rgba(5, 10, 30, 0.85);
+  opacity: 1;
+  margin: 0px;
+  padding: 0px;
+  text-shadow: none;
+  color:#eeeeee;
+  font-weight: normal;
+  font-size: 112px;
+  line-height: initial;
+  font-family: mplus-2p-light-sub,Helvetica,arial,freesans,clean,sans-serif;
+  display: none;
+}
+
+.infoElements{
+  list-style-type:circle;
+  list-style-position:outside;
+  margin-left:0.6em;
+}
+
+  </style>
+  </head>
+  <body>
+<section id='inputSection' class='userInput'>
+  <select name='dts' id='dateSelector' class='userInput' style=" width:730px;height:140px">
+    <option value="" disabled selected hidden>Select a date from the list</option>
+    </select>
+  <div class="glyphicon glyphicon-play-circle userInput" id="fetchDateData">
+    <span class='hintText'>Click to fetch this date data</span>
+  </div>
+  <div class="glyphicon glyphicon-remove userInput" id="clearDateTextField">
+    <span class='hintText'>Click to clear date selection</span>
+  </div>
+</section>
+    <script type="text/javascript" src="https://d3js.org/d3.v4.js"></script>
+    <script type="text/javascript" src="http://d3js.org/topojson.v0.min.js"></script>
+     <script type="text/javascript" src="./normalize.js"></script>
+    <script>
+    "use strict";
+    var clipDimensions,node,selectFlow,reset=false,pause=false,dataDate = 19340101;
+    //calling this function later after window location string has been set according to required format
+    var createGraphics = function(){
+
+    var interpolationWidthBound = 0; //do not set both offset and width to zero else will occur endless loop
+
+    var offset = 10;
+
+    var width = 11520,
+      height = 6480,
+      viewBoxHeight=2160,
+      viewBoxWidth= 3840,
+      maxlat = 85,
+      initialScale = 1833.31;
+      
+    var projection = d3.geoMercator()
+      .center([0,0])
+      .translate([5759.513227752704,4250])
+      .scale(initialScale)
+      .rotate([0, 0]);
+
+    //display parameters for the particular monitor
+    var parameters = ""+clipDimensions[0]+" "+clipDimensions[1]+" "+width+" "+height;
+
+    var svg = d3.select("body").append("svg")
+      .attr('id', 'mapSVG')
+      .attr("width", width)
+      .attr("height", height)
+      .attr("clip-path","url(#clipping)")
+      .attr("viewBox",parameters)
+      .attr("preserveAspectRatio","xMinYMin meet")
+      .style("z-index", 0)
+      .style("background-color", "#1ca2ba");
+    
+
+    svg.append("clipPath").attr("id","clipping").append("rect").attr("x",0).attr("y",0).attr("width",viewBoxWidth).attr("height",viewBoxHeight);
+
+
+    var topSvg = d3.select("body").append("svg").attr("id", "topSvg")
+      .attr("width", width)
+      .attr("height", height)
+      .attr('class','initialFlow blinkers')
+      .attr("clip-path","url(#clipping)")
+      .attr("viewBox",parameters)
+      .attr("preserveAspectRatio","xMinYMin meet")
+      .style("animation-play-state","running");
+
+    var canvas = d3.select("body").append("canvas").attr("id", "canvasDemo").attr("width", viewBoxWidth)
+      .attr("height", viewBoxHeight).style('left','0px').style('top','0px').node().getContext('2d');
+
+    var transformer = new transform(clipDimensions[0],clipDimensions[1]);
+    //creating a marker as arrowhead
+    // svg.append("defs").append("marker").attr("id","arrowHead").attr("refX",3).attr("refY",3).attr("markerWidth",6).attr("markerHeight",6).attr("orient","auto")
+    // .append("path").attr("d","M0,0L6,3L0,6L3,3L0,0").attr("fill","white");
+
+    var g = svg.append("g");
+
+    var path = d3.geoPath()
+      .projection(projection);
+
+    // find the top left and bottom right of current projection
+    function mercatorBounds(projection, maxlat) {
+      var yaw = projection.rotate()[0],
+        /*yaw here is the center of projection of longitude*/
+        xymax = projection([-yaw + 180 - 1e-6, -maxlat]),
+        xymin = projection([-yaw - 180 + 1e-6, maxlat]);
+
+      return [xymin, xymax];
+    }
+
+    //this object gives the maximum and minimum bound of both x and y coordinates of current projection
+    var dimension = mercatorBounds(projection, maxlat),
+      minimumX = dimension[0][0],
+      maximumX = dimension[1][0];
+
+    //load and display the World
+    d3.json("http://10.29.2.27:8085/world-map?op=OPEN", function(error, topology) {
+
+      g.selectAll("path")
+        .data(topojson.object(topology, topology.objects.countries)
+          .geometries,function(d){return d;})
+        .enter()
+        .append("path")
+        .attr("d", path)
+        .attr("stroke", "white")
+        .attr("fill", "#e1bb9e")
+        .attr("stroke-width", 1);
+
+      if(node==2){
+
+        let contextDiv = d3.select('body').append('div').attr('id','contextDiv').style('position','absolute').style('left','1300px').style('top','300px').style('z-index',3).style('margin','0px').style('padding','0px');
+
+        let viewContext = contextDiv.append('h1').attr('id','context').text('Global Wind Flow Simulation').on('click',function(){
+         
+          if(document.getElementById('viewDetail').classList.contains('hidden')){
+            document.getElementById('viewDetail').style.display='block';
+            document.getElementById('viewDetail').classList.toggle('hidden');
+            document.getElementById('currentDate').style.display='none';
+          }else{
+            document.getElementById('viewDetail').style.display='none';
+            document.getElementById('viewDetail').classList.toggle('hidden');
+            document.getElementById('currentDate').style.display='block';
+          }
+
+       });
+
+      let menuIcon = contextDiv.append('div').attr('id','menuIcon').on('click',function(){
+         
+          if(document.getElementById('viewDetail').classList.contains('hidden')){
+            document.getElementById('viewDetail').style.display='block';
+            document.getElementById('viewDetail').classList.toggle('hidden');
+            document.getElementById('currentDate').style.display='none';
+          }else{
+            document.getElementById('viewDetail').style.display='none';
+            document.getElementById('viewDetail').classList.toggle('hidden');
+            document.getElementById('currentDate').style.display='block';
+          }
+
+       });
+
+      //three bars of a menu icon
+      menuIcon.append('span').attr('class','menuBar');
+      menuIcon.append('span').attr('class','menuBar');
+      menuIcon.append('span').attr('class','menuBar');
+
+       contextDiv.append('h2').attr('id','currentDate').style('position','absolute').style('left','420px').style('top','150px');
+
+       let viewDetail = contextDiv.append('div').attr('id','viewDetail').attr('class','infoContainer hidden').style('position','absolute').style('left','0px').style('top','140px');
+
+       let viewList= viewDetail.append('ul').attr('id','viewInfo');
+       //adding all the info about interaction as list elements where one info per line
+       viewList.append('li').attr('id','dateDetails').attr('class','infoElements').text('Date | ');
+       viewList.append('li').attr('id','stationInfo').attr('class','infoElements').text('Hover over any station icon to get the station name');
+       viewList.append('li').attr('id','clickInfo').attr('class','infoElements').text('Click any station to start flow from that station');
+       viewList.append('li').attr('id','fetchInfo').attr('class','infoElements').text('Use \u2758> button to fetch data for a date after selecting it from the list');
+       // viewList.append('li').attr('id','resetInfo').attr('class','infoElements').text('Use X button to reset date selection');
+     }
+
+
+     //making node 2 responsible for checking if new data is available and then fetch it is user wants to
+     if(node==2){
+
+      //function that runs simulation automatically changing data in regular intervals
+      var continuousDataCheckFunction = function() {
+        d3.request("http://10.29.2.27:8085/").post(JSON.stringify({
+          op:"CHECK",
+          date: dataDate,
+          type: "RAW"
+        }), function(error, data) {
+          let response = JSON.parse(data.responseText);
+          if (response[0] == "ready") {
+
+              let dropDown = document.getElementById('dateSelector'), dateAlreadyPresent=false;
+              //adding next available data for visualization to date selector select button
+              for(let i=0;i<dropDown.length;i++){
+                if(dropDown[i].value==dataDate){
+                  dateAlreadyPresent=true;
+                  break;
+                }
+              }
+        
+              if(!dateAlreadyPresent){
+                dropDown.appendChild(new Option(dataDate,dataDate,false));
+              }
+
+              //starting first date flow without user input
+              // if(dataDate==19720101){
+              //     sendEvent(JSON.stringify(
+              //               {fetch:dataDate})
+              //              );
+              // }
+
+              if(response[1]!="done"){
+                dataDate = response[1];
+              }else{
+                clearInterval(timeID);
+              }
+              
+          }
+        });
+      }
+
+      var timeID = setInterval(continuousDataCheckFunction,4000);
+  
+      //adding user input field to document flow for getting user selected date for a flow
+      d3.selectAll('.userInput').style('display','inline-block');
+      
+      d3.select('#clearDateTextField').on('click',function(){
+        let elem = document.getElementById('dateSelector');
+        if(elem.selectedIndex){
+            document.getElementById('dateSelector').selectedIndex=0;
+            // sendEvent('clearInputField');
+          }
+      });
+
+     d3.select('#fetchDateData').on('click',function(){
+        let temp = document.getElementById('dateSelector'),
+            date = temp[temp.selectedIndex].value;
+        if(date){
+          sendEvent(JSON.stringify(
+          {
+            fetch:date
+          }));
+        }
+
+     });
+
+    }
+
+      //function to call fetch data for a date in a particular format
+      function getDataForThisDate(date){
+     
+        if(node==2){
+          let stringDate = String(date),
+              yr = +stringDate.substring(0,4),
+              m = +stringDate.substring(4,6),
+              d = +stringDate.substring(6); 
+
+          let formattedDate = new Date(yr,m-1,d);
+
+          let dateDisplay = d3.select("#currentDate").text(formattedDate.toDateString());
+          
+          d3.select("#dateDetails").text('Date | '+formattedDate.toDateString());
+        }
+
+        //getting data for a date by passing in actual query string for get request to server
+        getStreamFLowData("?op=OPEN&node="+node+"&date="+date+"&type=RAW");
+      }
+
+      //selecting a date to fetch data from the server and show only this for the time being and
+      //starting the continuous flow again if the user resets selection
+      selectFlow = function(date = null,clear = false,pause=false,resume=false){
+       
+        if(date){
+          getDataForThisDate(date);
+        }
+        // else if(clear){
+        //   timeID = setInterval(continuousFlowFunction, 2000);
+        // }
+        else if(pause){
+          cancelAnimationFrame(requestID);//pausing the animation
+        }else if(resume){
+          let checkerCanvas =  document.createElement('canvas');
+              checkerCanvas.width = viewBoxWidth;
+              checkerCanvas.height=viewBoxHeight;
+          if(checkerCanvas.toDataURL()!==(document.getElementById('canvasDemo').toDataURL())){
+            requestID = requestAnimationFrame(animate); //resuming the animation
+          }
+          
+        }
+
+      }
+
+
+
+      var requestID, //variable to store request ID of animation
+          frame, //frame counter total equals 60
+          allFrames, //variable to cache original images for animation
+          currentStateImages, // current image to draw in the canvas based on user input
+          windFlowIDS, //list to hold all the stream line flow ids for a particular date
+          lastSelected, //holding the flows for latest interaction station
+          totalPathData,//list to hold all the stream line flow  line data for a particular date
+          newLineOffset=0;// how much of the coordinates the lines and canvas need to me moved in new panned view
+          //taking care of zoom behaviour
+    
+    var zoom = d3.zoom().scaleExtent([1,1]).on('end',function(){
+      panner();
+    });
+    
+    // topSvg.call(zoom);
+    //event listener functino that takes care of panning correctly based on user interaction
+    panner  = function(serverInput = null){
+        console.log(serverInput);
+
+        if(!serverInput){
+            let dragDimension=d3.event.transform.x;
+            console.log("dragged is ",d3.event.transform);
+            sendEvent(JSON.stringify({drag:dragDimension}));
+        }else{
+
+          if("yaw" in serverInput){
+               let intialX = projection([0,0])[0];
+            
+                projection.rotate([serverInput["yaw"],0,0]);
+
+                let xMoved = (projection([0,0])[0])-intialX; //actual x coordinates the canvas have to be moved to overlay it properly
+                newLineOffset+=xMoved; //calculating total shifting of the coordinates done since the beggining
+                //redrawing new map based on new panning interaction
+                g.selectAll("path").attr("d",path.projection(projection));
+                
+                document.getElementById("canvasDemo").style.left = newLineOffset+"px"; //assigning new left position for absolutely positioned canvas element so that the overlayed canvas falls in the correct location of panned svg
+             
+                //redrawing stations based on new panning 
+                topSvg.selectAll("image").attr("x", function(d, i) {
+                      let x = projection([d.lon, d.lat])[0];
+                      return isFinite(x) ? x- 50: null;
+                    })
+                    .attr("y", function(d, i) {
+                      let y = projection([d.lon, d.lat])[1];
+                      return isFinite(y) ? y -50 : null;
+                    });
+
+                //redrawing new lines based on new panning
+                topSvg.selectAll('line').attr("x1", function(d,i){
+                  return d.x0 + newLineOffset;
+                }).attr("x2", function(d,i){
+                  return d.x1 + newLineOffset;
+                });
+
+                topSvg.node().__zoom.x = serverInput['drag'];
+                console.log(topSvg.node().__zoom);
+              }else{
+                topSvg.node().__zoom.x = serverInput['drag'];
+                console.log(topSvg.node().__zoom);
+              }
+
+        }
+
+    }
+
+
+      function getStreamFLowData(query) {
+
+        d3.csv("http://10.29.2.27:8085/data"+query, function(error, response) {
+
+            // dataDate++;
+          if(node==2){
+                d3.select('#hoverStation').remove();
+                d3.select('#resetStation').remove();
+                d3.select('#hoverLine').remove();
+          }
+
+            cancelAnimationFrame(requestID); //stopping the old animation
+            canvas.clearRect(0, 0,viewBoxWidth,viewBoxHeight); //clearing drawing canvas
+            lastSelected = []; //clearing the last selected from previous date data
+
+            d3.selectAll("image").remove(); //removing all the staitons previously appended to DOM
+            d3.selectAll("line").remove(); //removing all the lines previously appended to DOM
+            d3.selectAll("text").remove(); //removing text element just in case text are still on the screen after new data comes in
+
+            topSvg.node().classList.add('initialFlow','blinkers'); //reseting the class attribute of top svg for each new data flow
+            topSvg.node().style.animationPlayState = 'running'; //reruning the blinking effect for topSvg container    
+                   
+            totalPathData = [];
+            windFlowIDS = [];
+            
+            //sending server to not allow interaction when every single client doesnot register click event in server
+            sendEvent(JSON.stringify(
+            {
+              click:false,
+              reset:false
+            }));
+
+            pause=false,
+            frame = 0; //frame counter total equals 60
+            allFrames = {}; //variable to cache original images for animation
+            currentStateImages = {}; // current image to draw in the canvas based on user input
+
+            var startParseTime = Date.now();
+
+          //converts the csv data into data arranged into groups based on their ID'ss
+          var data = d3.nest().key(function(d) {
+              return d.ID
+            }).entries(response); //ID now is key
+
+          if(data.length==0){
+            sendEvent(JSON.stringify(
+                {
+                  click:true,
+                  reset:true
+                }));
+            return;
+          }
+          
+          var upperBound = d3.max(data, function(item) {
+              return item["values"].length;
+            }),
+            arrowSize = d3.scaleLinear().domain([1, upperBound]).range([10, 5]).clamp(true); //bounding the arrow size according to lines in a flow
+          // lineColor = d3.scaleLinear().domain([1,highestVelocity]).range(["#FF0000","#800000"]); //bounding the color of curves based on wind velocity from pure red to maroon
+          //looping through the groups based on keys
+          for (var i = 0; i < data.length; i++) {
+
+            var wind_flow_data = data[i]["values"], //values of the wind flow
+                firstElement = wind_flow_data[0], //using first object reference to use for getting few info
+                lastElement = wind_flow_data[wind_flow_data.length-1], //getting last object in flow to check each arrow max bound
+                station_id =  firstElement["Source"]+"_to_"+firstElement["Destination"],
+              streamLineData = {
+                id: station_id,
+                active: 0,
+                value: []
+              }; //object for storing the value of lines in that particular wind flow between stations
+
+            windFlowIDS.push(station_id); //adding stations id so that they can be used later on for interaction and animation
+
+            var stations = [];
+           //putting the source station and destination statino data to show them as circles
+            if(d3.select("#"+firstElement['Source']).node()==undefined){
+              stations.push({
+                name: firstElement["Source"],
+                lat: +firstElement["S_Lat"],
+                lon: +firstElement["S_Lon"]
+              });
+            }
+
+
+            if(d3.select("#"+firstElement['Destination']).node()==undefined){
+              stations.push({
+                name: firstElement["Destination"],
+                lat: +firstElement["D_Lat"],
+                lon: +firstElement["D_Lon"]
+              });
+            }
+
+            //adding stations as image and adding on click event for those stations
+            var st_locations = topSvg.selectAll("image." + station_id).data(stations,function(d){return d;}).enter().append("image").attr("class", station_id)
+              .attr("id", function(d, i) {
+                return d.name;
+              }).attr("active", 0)
+              .attr("xlink:href", "\\\\WALL3\\WebContent\\station.png")
+              .attr("x", function(d, i) {
+                let x = projection([d.lon, d.lat])[0];
+                return isFinite(x) ? x -20 : null; 
+              })
+              .attr("y", function(d, i) {
+                let y = projection([d.lon, d.lat])[1];
+                return isFinite(y) ? y- 20 :null; 
+              })
+              .attr("width", 50)
+              .attr("height", 50);
+            //show station name in text in case mouse is hovered
+            st_locations.on("mouseover", function(d, i) {
+
+              let xy= d3.mouse(this),
+                  elem = d3.select(this);
+                  if(elem.node().parentNode.classList.contains('initialFlow')){
+                      //checking if the flow is in initial state or interaction state
+                      if(!elem.node().parentNode.classList.toggle('blinkers')){
+                      //pausing blinking when mouse over a station
+                          elem.node().parentNode.style.animationPlayState = 'paused';
+                      }
+                  }
+
+
+              //to do event listener with pausing and resume
+               let currentState = elem.attr("active");
+               if(currentState==1){
+
+                if(!topSvg.selectAll("g."+d.name).size()){
+                    //creating white background when displaying text for station info
+                  let numOfCharacters = d.name.length,
+                      textContainer = topSvg.append('g').attr('class','stationName '+d.name).attr("transform", "translate("+(xy[0]-(numOfCharacters*10))+","+xy[1]+")");
+                      
+                      textContainer.append('rect').attr('width',function(){
+                          return (numOfCharacters*22) +"px";
+                      }).attr('height','50px').attr('rx','15px').attr('ry','15px').attr('fill','#808080');
+
+                      textContainer.append("text").attr('class','stationName').attr('dx','0.6em').attr('fill','black').attr("dy", "1.2em").text(d.name);
+
+                if(pause){
+                  let container = topSvg.append('g').attr('class','tempButtons '+d.name).attr("transform", "translate("+(xy[0]-50)+","+(xy[1]+70)+")");
+
+                      container.append('rect').attr('width','130px').attr('height','50px').attr('rx','15px').attr('ry','15px').attr('fill','red');
+                      container.append('text').attr('class','paOrRe').attr('dx','0.6em').attr("dy", "1.3em").attr('fill','white').text("Resume").on('click',function(){
+                            //asking to resume animation 
+                            sendEvent('resume');
+                          });
+                }else{
+                  let nextContainer = topSvg.append('g').attr('class','tempButtons '+d.name).attr("transform", "translate("+(xy[0]-50)+","+(xy[1]+70)+")");
+
+                      nextContainer.append('rect').attr('width','100px').attr('height','50px').attr('rx','15px').attr('ry','15px').attr('fill','red');
+                      nextContainer.append('text').attr('class','paOrRe').attr('dx','0.6em').attr("dy", "1.3em").attr('fill','white').text("Pause").on('click',function(){
+                          //asking to pause the whole current animation
+                          sendEvent('pause');
+                      });
+                  }
+                }
+
+                }else{
+
+                  if(!topSvg.selectAll("g."+d.name).size()){
+                      //creating white background when displaying text for station info
+                      let numOfCharacters = d.name.length,
+                          textContainer = topSvg.append('g').attr('class','stationName '+d.name).attr("transform", "translate("+(xy[0]-(numOfCharacters*10))+","+xy[1]+")");
+                          
+                          textContainer.append('rect').attr('width',function(){
+                              return (numOfCharacters*22) +"px";
+                          }).attr('height','50px').attr('rx','15px').attr('ry','15px').attr('fill','#808080');
+
+                          textContainer.append("text").attr('class','stationName').attr('dx','0.6em').attr('fill','black').attr("dy", "1.2em").text(d.name);
+                  }
+                }
+              }).on("mouseout", function(d, i) {
+              let elem = d3.select(this),
+                  currentState = elem.attr("active");
+
+                  if(elem.node().parentNode.classList.contains('initialFlow')){
+                      //checking if the flow is in initial state or interaction state
+                      if(!elem.node().parentNode.classList.contains('blinkers')){
+                        //resuming blinking effect after mouse out
+                        elem.node().parentNode.classList.add('blinkers');
+                        elem.node().parentNode.style.animationPlayState = 'running';
+                      }   
+                  }
+
+                     
+                if(currentState==1){
+
+                  setTimeout(function(){
+                    topSvg.selectAll("g."+d.name).remove();   
+                  },2500);
+                }else{
+                  topSvg.selectAll("g."+d.name).remove();
+                }
+
+              }).on("click", function() {
+                  topSvg.selectAll("g.tempButtons").remove();
+                  topSvg.selectAll("g.stationName").remove(); 
+
+                  var selectedElement = d3.select(this),
+                    isActive = selectedElement.attr("active"),
+                    newOpacity = (isActive == 1) ? 0 : 1,
+                    subString = selectedElement.attr("id");
+
+                  sendEvent(JSON.stringify({
+                    s: subString,
+                    o: newOpacity,
+                    t: Date.now()
+                  }));
+              });
+
+
+            var arrow_size = arrowSize(wind_flow_data.length);
+            //getting aggreration number and coordiantes diff between wind instances
+            // var greaterDiff = transform.findGreaterDifferenceLatOrLon(firstElement,lastElement),
+            //     stepPerWindInstance = (greaterDiff/wind_flow_data.length)*3;
+
+            wind_flow_data.forEach(function(d, i) {
+              //checking if the data equals to the last line in wind flow and now creating the line as it will already be created
+              if (i == wind_flow_data.length - 1) {
+                return;
+              } 
+
+              var vrd = Math.abs(Number(d['Wind_Lon'])-Number(wind_flow_data[i + 1]["Wind_Lon"]))>8;
+
+              if(vrd){
+                return;
+              }
+                var x0 = projection([+d["Wind_Lon"], +d["Wind_Lat"]]),
+                x1 = projection([+wind_flow_data[i + 1]["Wind_Lon"], +wind_flow_data[i + 1]["Wind_Lat"]]),
+                temp = tweenTheCurves(d, wind_flow_data[i + 1], x0, x1, minimumX, maximumX);
+
+                // drawing the curves based on the whether they have parts of not
+                for (var x = 0; x < temp.length; x++) {
+                  var randomParticlesAroundEachLine = createRandomParticles(temp[x], i);
+
+                  for (var x = 0; x < randomParticlesAroundEachLine.length; x++) {
+                    var particle = randomParticlesAroundEachLine[x],
+                      startPoint = [Math.ceil(particle[0][0]), Math.ceil(particle[0][1])],
+                      endPoint = [Math.ceil(particle[1][0]), Math.ceil(particle[1][1])],
+                      angle = Math.atan2(endPoint[1] - startPoint[1], endPoint[0] - startPoint[0]),
+                      pathInterpolator = d3.interpolateArray(startPoint, endPoint),
+                      velocity = (+wind_flow_data[i + 1]["Wind_Velocity"]).toFixed(2),
+                      // strokeColor = lineColor(velocity),
+                      moveAngle = 30 * (Math.PI / 180),
+                      beforeAngle = (Math.PI + angle) - moveAngle,
+                      afterAngle = (Math.PI + angle) + moveAngle,
+                      hypo = Math.abs(arrow_size / Math.cos(moveAngle));
+
+                    // temp.velocity = velocity; //adding end velocity of the line for hover over event
+
+                    // var path =  new Path2D();
+                    // path.moveTo(startPoint[0],startPoint[1]);
+                    // path.lineTo(endPoint[0],endPoint[1]);
+
+
+                    var obj = {
+                      x0: startPoint[0],
+                      y0: startPoint[1],
+                      x1: endPoint[0],
+                      y1: endPoint[1],
+                      // line:path,
+                      v:velocity,
+                      interpolator: pathInterpolator,
+                      beforeAngle: beforeAngle,
+                      afterAngle: afterAngle,
+                      h: hypo
+                    };
+                    //,color:strokeColor};
+
+                    streamLineData.value.push(obj); //adding each line data into one container for one flow
+                  }
+                }
+              
+            });
+
+            totalPathData.push(streamLineData); //adding each stream line flow between two stations to total flows
+
+          }
+          
+          console.log("the time taken for preprocessing data is"+(Date.now()-startParseTime)/1000)
+          requestID = requestAnimationFrame(animate); //starting the animation by requesting frame and passing in the callback
+
+          });
+
+        }
+
+        //this function gets the selected station name from the server and changes the flow from that station 
+        recieveEventData = function(data) {
+          var newOpacity = +data['o'],
+            subString = data['s'],
+            initiatedTime = Number(data['t']),
+            totalSelection = [];
+
+          if(node==2){
+
+            if(document.getElementsByClassName('infoElements').length==4){
+                let elem = d3.select('#viewInfo');
+                elem.append('li').attr('id','hoverStation').attr('class','infoElements').text('Hover over the stations to pause or resume the flow');
+                elem.append('li').attr('id','resetStation').attr('class','infoElements').text('Click the active station to remove flow from that station');
+                elem.append('li').attr('id','hoverLine').attr('class','infoElements').text('Hover over any visible line to get velocity info for that wind instance');
+              }
+          }
+
+          if (windFlowIDS.length == 0) {
+            return;
+          }
+
+          //removing both the class name after interaction mode is entered
+          topSvg.node().classList.remove('blinkers','initialFlow');
+          topSvg.node().style.animationPlayState = 'paused';
+         
+          //getting all the stream line class where this station is a source of wind
+          for (var i = 0; i < windFlowIDS.length; i++) {
+            var temp = windFlowIDS[i].substring(0, windFlowIDS[i].indexOf("to") - 1);
+            if (temp == subString) {
+              totalSelection.push(i);
+            }
+          }
+
+          for (var j = 0; j < totalSelection.length; j++) {
+            var index = totalSelection[j],
+              streamLineID = windFlowIDS[index];
+            totalPathData[index].active = newOpacity;
+            
+            if(newOpacity){
+
+             let allLines = totalPathData[index].value; //collection of lines for one flow
+
+                //appends line as DOM objects so that they can be used to give velocity on hover over
+                topSvg.selectAll("line."+streamLineID).data(allLines,function(d){return d;}).enter().append('line').attr('class',streamLineID)
+                .attr("x1", function(d,i){
+                  return d.x0 + newLineOffset;
+                }).attr("y1", function(d,i){
+                  return d.y0;
+                }).attr("x2", function(d,i){
+                  return d.x1 + newLineOffset;
+                }).attr("y2", function(d,i){
+                  return d.y1;
+                }).style("stroke-width", 1)
+                  .style("stroke", "black")
+                  .style('opacity',0)
+                  .on("mouseover", function(d, i) {
+                        let xy = d3.mouse(this),
+                            info = (+d.v).toFixed(2)+"m/s",
+                            numOfCharacters = info.length,
+                            lineContainer = topSvg.append('g').attr("class", streamLineID).attr("transform", "translate("+(xy[0]-(numOfCharacters*10))+","+(xy[1]+40)+")");
+
+                            lineContainer.append('rect').attr('width',function(){
+                                return (numOfCharacters*21) +"px";
+                            }).attr('height','50px').attr('rx','15px').attr('ry','15px').attr('fill','#808080');
+
+                            lineContainer.append('text').attr("class","velocity").attr('dx','0.5em').attr('dy','1.2em').text(info);
+
+                    }).on("mouseout", function() {
+                      topSvg.selectAll("g."+streamLineID).remove();
+                    });
+
+          }else{
+            topSvg.selectAll("line." + streamLineID).remove();
+          }  
+
+          }
+
+          topSvg.selectAll("image#" + subString).attr("active", newOpacity);
+
+          if(totalSelection.length==0){
+            lastSelected=[];
+          }else{
+            if(newOpacity==1){
+              lastSelected = totalSelection;
+            }else{
+              lastSelected=[];
+            }
+          }
+         
+          var verdict = reCreateImages(); //creating new images for animation
+          pause=false; // reseting to flow state once flow numbers have changed
+          
+          if(verdict==1){
+
+            setTimeout(function(){
+              if(reset==true){
+              if(node==2){
+      
+                d3.select('#hoverStation').remove();
+                d3.select('#resetStation').remove();
+                d3.select('#hoverLine').remove();
+              }
+
+              // d3.selectAll('line').remove(); // removing all lines appended for hover over after reseting the view
+              topSvg.node().classList.add('blinkers','initialFlow'); //reseting to original stations blinking mode
+              topSvg.node().style.animationPlayState = 'running';
+
+              cancelAnimationFrame(requestID);
+              currentStateImages=allFrames;
+              requestID=requestAnimationFrame(animate);
+
+              reset=false;
+              sendEvent(JSON.stringify(
+              {
+                reset:false
+              }));
+          }else{
+              cancelAnimationFrame(requestID);//stopping the old animation to remove some stream lines
+              canvas.clearRect(0, 0, width, height);
+            }
+              
+            },500);
+           
+          }else{
+            cancelAnimationFrame(requestID);//stopping the old animation to remove some stream lines
+            requestID = requestAnimationFrame(animate); //start the animation again
+          } 
+
+          console.log("the time for event synch is "+ (Date.now()-initiatedTime)/1000);
+
+        }
+
+
+          //this function animates the streamline by moving the curves with arrow heads on it
+          function animate() {
+            frame++;
+            if (frame > 30) {
+              frame = 1;
+            }
+            
+            if (allFrames[frame] == undefined) {
+              var offScreenCanvas = document.createElement("canvas"), // creates a new off-screen canvas element
+                offScreenContext = offScreenCanvas.getContext('2d');
+                offScreenCanvas.width = viewBoxWidth;// match the off-screen canvas dimensions with that the main drawing Canvas
+                offScreenCanvas.height = viewBoxHeight;
+
+          var linePath = new Path2D(), //this one for drawing lines
+              arrowPath = new Path2D(); //this path for drawing arrow head
+
+            var t = (frame * 33.33) / 1000;
+            canvas.clearRect(0, 0, viewBoxWidth, viewBoxHeight);
+            //drawing the lines
+            for (var i = 0; i < totalPathData.length; i++) {
+              var flow = totalPathData[i];
+              for (var j = 0; j < flow.value.length; j++) {
+                var obj = flow.value[j],
+                  arrowPoint = obj.interpolator(t),
+                  x1 = Math.ceil(arrowPoint[0]),
+                  y1 = Math.ceil(arrowPoint[1]);
+
+                var start = transformer.convertToActualXY(obj.x0, obj.y0),
+                  end = transformer.convertToActualXY(x1, y1);
+
+                linePath.moveTo(start[0], start[1]);
+                linePath.lineTo(end[0], end[1]);
+
+                var leftX = Math.ceil(x1 + Math.cos(obj.beforeAngle) * obj.h),
+                  leftY = Math.ceil(y1 + Math.sin(obj.beforeAngle) * obj.h),
+                  rightX = Math.ceil(x1 + Math.cos(obj.afterAngle) * obj.h),
+                  rightY = Math.ceil(y1 + Math.sin(obj.afterAngle) * obj.h);
+
+                var left = transformer.convertToActualXY(leftX, leftY),
+                  right = transformer.convertToActualXY(rightX, rightY);
+
+                arrowPath.moveTo(end[0], end[1]);
+                arrowPath.lineTo(left[0], left[1]);
+                arrowPath.lineTo(right[0], right[1]);
+                arrowPath.lineTo(end[0], end[1]);
+
+              }
+            }
+            canvas.strokeStyle = "#FD5959";
+            canvas.stroke(linePath);
+            canvas.strokeStyle = "#F0FFFF";
+            canvas.stroke(arrowPath)
+            canvas.fillStyle = "#F0FFFF";
+            canvas.fill(arrowPath);
+
+            offScreenContext.strokeStyle = "#FD5959";
+            offScreenContext.stroke(linePath);
+            offScreenContext.strokeStyle = "#F0FFFF";
+            offScreenContext.stroke(arrowPath)
+            offScreenContext.fillStyle = "#F0FFFF";
+            offScreenContext.fill(arrowPath);
+ 
+
+            // createArrows(offScreenContext,arrowPath); //this function creates arrow heads on the top of the animating lines
+            allFrames[frame] = offScreenCanvas; //storing original frames for later use
+            currentStateImages[frame] = offScreenCanvas;
+
+            if (frame == 30) {
+              sendEvent(JSON.stringify(
+              {
+                click:true
+              }));
+            } //allowing to interact with data after all 60 frames has been 
+            } else {
+              canvas.clearRect(0, 0, viewBoxWidth, viewBoxHeight);
+              canvas.drawImage(currentStateImages[frame], 0, 0);
+            }
+
+            requestID = requestAnimationFrame(animate); //calling another animation frame to draw
+
+          }
+          
+
+        //creates new frames in the animation based on the user input
+        function reCreateImages() {
+
+          var f = 0,
+            clearCanvas=true,
+            tempImages = {};
+
+          while (f < 30) {
+            var offScreenCanvas = document.createElement('canvas'),
+              offScreenContext = offScreenCanvas.getContext('2d');
+            offScreenCanvas.width = viewBoxWidth; // match the off-screen canvas dimensions with that the main drawing Canvas
+            offScreenCanvas.height = viewBoxHeight;
+
+            var linePath = new Path2D(), //this one for drawing lines
+              latestArrowPath = new Path2D(), //this one for drawing blue arrow heads i.e. latest stations line
+              arrowPath = new Path2D(); //this path for drawing arrow head
+
+            offScreenContext.drawImage(allFrames[f + 1], 0, 0);
+            offScreenContext.globalCompositeOperation = 'source-in';
+
+            var t = ((f + 1) * 33.33) / 1000;
+            for (var i = 0; i < totalPathData.length; i++) {
+
+              if (totalPathData[i]['active'] == 1) {
+                var temp = totalPathData[i].value,                
+                    isLast = lastSelected.includes(i);
+                    clearCanvas=false;
+
+                for (var j = 0; j < temp.length; j++) {
+                  var obj = temp[j],
+                    arrowPoint = obj.interpolator(t),
+                    x1 = Math.ceil(arrowPoint[0]),
+                    y1 = Math.ceil(arrowPoint[1]);
+
+                  var start = transformer.convertToActualXY(obj.x0, obj.y0),
+                    end = transformer.convertToActualXY(x1, y1);
+
+                  linePath.moveTo(start[0], start[1]);
+                  linePath.lineTo(end[0], end[1]);
+
+
+                  var leftX = Math.ceil(x1 + Math.cos(obj.beforeAngle) * obj.h),
+                    leftY = Math.ceil(y1 + Math.sin(obj.beforeAngle) * obj.h),
+                    rightX = Math.ceil(x1 + Math.cos(obj.afterAngle) * obj.h),
+                    rightY = Math.ceil(y1 + Math.sin(obj.afterAngle) * obj.h);
+
+                  var left = transformer.convertToActualXY(leftX, leftY),
+                    right = transformer.convertToActualXY(rightX, rightY);
+
+                  if (isLast) {
+                    latestArrowPath.moveTo(end[0], end[1]);
+                    latestArrowPath.lineTo(left[0], left[1]);
+                    latestArrowPath.lineTo(right[0], right[1]);
+                    latestArrowPath.lineTo(end[0], end[1]);
+                  } else {
+                    arrowPath.moveTo(end[0], end[1]);
+                    arrowPath.lineTo(left[0], left[1]);
+                    arrowPath.lineTo(right[0], right[1]);
+                    arrowPath.lineTo(end[0], end[1]);
+                  }
+
+                }
+              }
+            }
+
+            if(clearCanvas==true){
+              sendEvent(JSON.stringify(
+              {
+                reset:true
+              }));
+              return 1;
+            }
+
+            offScreenContext.lineWidth = 2;
+            offScreenContext.strokeStyle = "#FD5959";
+            offScreenContext.stroke(linePath);
+            offScreenContext.globalCompositeOperation = 'source-over';
+            offScreenContext.lineWidth = 1;
+            offScreenContext.strokeStyle = "#F0FFFF";
+            offScreenContext.stroke(arrowPath);
+            offScreenContext.fillStyle = "#F0FFFF";
+            offScreenContext.fill(arrowPath);
+            offScreenContext.strokeStyle = "#2F4F4F";
+            offScreenContext.stroke(latestArrowPath);
+            offScreenContext.fillStyle = "#2F4F4F";
+            offScreenContext.fill(latestArrowPath);
+
+            tempImages[f + 1] = offScreenCanvas;
+            f++;
+            //just in case interaction doesnot contain any data clear canvas and show nothing
+          }
+
+          if(clearCanvas==false){
+            sendEvent(JSON.stringify(
+              {
+                reset:false
+              }));
+          }
+
+
+          currentStateImages = tempImages;
+          tempImages = undefined;
+          return 0;
+
+        }
+        //this function creates new parts of a curve based on their location in the new projection
+        function tweenTheCurves(a, b, x0, x1, minX, maxX) {
+          var result = [];
+
+          if (+b["Wind_Lon"] >= +a["Wind_Lon"] && x1[0] < x0[0]) {
+            var middlePoint = getTheConnectionPoint(x0, x1, "r", minX, maxX),
+              connectingPoint = [maxX, middlePoint],
+              nextOne = [minX, middlePoint];
+
+            result.push([x0, connectingPoint]);
+            result.push([nextOne, x1]);
+          } else if (+b["Wind_Lon"] < +a["Wind_Lon"] && x1[0] >= x0[0]) {
+            var middlePoint = getTheConnectionPoint(x0, x1, "l", minX, maxX),
+              connectingPoint = [minX, middlePoint],
+              nextOne = [maxX, middlePoint];
+
+            result.push([x0, connectingPoint]);
+            result.push([nextOne, x1]);
+          } else {
+
+            result.push([x0, x1]);
+          }
+
+          return result;
+        }
+
+        //this function gets the exact location where the point is connected to two different sections
+        function getTheConnectionPoint(x0, x1, flag, minX, maxX) {
+          //this part takes care of condition when start point is in right side of screen and end point at left side while panning
+          if (flag == "r") {
+            var base = Math.abs(x0[0] - maxX) + Math.abs(minX - x1[0]),
+              height = x0[1] - x1[1],
+              tanRatio = height / base;
+            return x0[1] - (Math.abs(x0[0] - maxX) * tanRatio);
+          } //this part takes care of condition when start point is left side of screen and end point at right side while panning
+          else if (flag == "l") {
+            var base = Math.abs(x0[0] - minX) + Math.abs(maxX - x1[0]),
+              height = x0[1] - x1[1],
+              tanRatio = height / base;
+            return x1[1] + (Math.abs(x1[0] - maxX) * tanRatio);
+          }
+        }
+
+        //creates random particles that are parallel and inside the max interpolation bound on each side
+        function createRandomParticles(value, index) {
+
+          var run = value[1][0] - value[0][0],
+            rise = value[0][1] - value[1][1],
+            tanRatio = rise / run,
+            yMax = value[0][1] + interpolationWidthBound,
+            yMin = value[0][1] - interpolationWidthBound,
+            xMax = value[0][0] + interpolationWidthBound,
+            xMin = value[0][0] - interpolationWidthBound,
+            particles = [];
+
+
+          //when the slope of line is greater than 45 degrees
+          if (Math.abs(Math.atan(tanRatio) * (180 / Math.PI)) > 45) {
+            //this randomly creates all the lines on the right
+            for (var i = (value[0][0] + offset); i <= xMax; i += offset) {
+              var temp = plotTheLinesForX(i, tanRatio, value[0][1], value[1][1]);
+              particles.push(temp);
+              if (index == 0) {
+                particles.push([
+                  [value[0][0], value[0][1]],
+                  [temp[0][0], temp[0][1]]
+                ]);
+              }
+            }
+
+            //this randomly creates all the lines on the right
+            for (var i = (value[0][0] - offset); i >= xMin; i -= offset) {
+              var temp = plotTheLinesForX(i, tanRatio, value[0][1], value[1][1]);
+              particles.push(temp);
+              if (index == 0) {
+                particles.push([
+                  [value[0][0], value[0][1]],
+                  [temp[0][0], temp[0][1]]
+                ]);
+              }
+            }
+          } else {
+            //this randomly creates all the lines on the right
+            for (var i = (value[0][1] - offset); i >= yMin; i -= offset) {
+              var temp = plotTheLinesForY(i, tanRatio, value[0][0], value[1][0]);
+              particles.push(temp);
+              if (index == 0) {
+                particles.push([
+                  [value[0][0], value[0][1]],
+                  [temp[0][0], temp[0][1]]
+                ]);
+              }
+            }
+
+            //this randomly creates all the lines on the right
+            for (var i = (value[0][1] + offset); i <= yMax; i += offset) {
+              var temp = plotTheLinesForY(i, tanRatio, value[0][0], value[1][0]);
+              particles.push(temp);
+              if (index == 0) {
+                particles.push([
+                  [value[0][0], value[0][1]],
+                  [temp[0][0], temp[0][1]]
+                ]);
+              }
+            }
+          }
+
+          //adding the actual line 
+          particles.push(value);
+
+          return particles;
+
+        }
+
+        //find the destination coordinate of randomly plotted points
+        function plotTheLinesForY(y1, ratio, x1, x2) {
+          var temp = [],
+            y2 = y1 - (ratio * (x2 - x1));
+          temp.push([x1, y1]);
+          temp.push([x2, y2]);
+          return temp;
+        }
+        //find the destination coordinate of randomly plotted points
+        function plotTheLinesForX(x1, ratio, y1, y2) {
+          var temp = [],
+            x2 = ((y1 - y2) / ratio) + x1;
+          temp.push([x1, y1]);
+          temp.push([x2, y2]);
+          return temp;
+        }
+
+  });
+
+  }
+
+  // function that intializes the node number for a browser and display dimensions before starting rendering graphics on the screen
+  function intializeGraphics(){
+
+      (function(){
+          if(clipDimensions[0]==0 && clipDimensions[1]==0){
+            node = 1;
+          }else if (clipDimensions[0]==3840 && clipDimensions[1]==0){
+            node = 2;
+          }else if (clipDimensions[0]==7680 && clipDimensions[1]==0){
+            node = 3;
+          }else if (clipDimensions[0]==0 && clipDimensions[1]==2160){
+            node = 4;
+          }else if(clipDimensions[0]==3840 && clipDimensions[1]==2160){
+            node = 5;
+          }else if (clipDimensions[0]==7680 && clipDimensions[1]==2160){
+            node = 6;
+          }else if (clipDimensions[0]==0 && clipDimensions[1]==4320){
+            node = 7;
+          }else if(clipDimensions[0]==3840 && clipDimensions[1]==4320){
+            node = 8;
+          }else if(clipDimensions[0]==7680 && clipDimensions[1]==4320){
+            node = 9;
+          }
+        })()
+  
+        createGraphics();
+
+  }
+
+  clipDimensions = window.location.search.substring(1).split(",");
+  
+  //checking until the url contains display dimension
+  if(clipDimensions.length==1){
+
+    setTimeout(function(){
+        clipDimensions = window.location.search.substring(1).split(",");
+        intializeGraphics();
+    },100)
+  
+  }else{
+        intializeGraphics();
+  }
+    </script>
+  </body>
+  </html>
+
+
